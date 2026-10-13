@@ -14,7 +14,7 @@ type LinkRecord = { id: string; resourceKind: ResourceKind; resourceId: string; 
 type LinkSelection = { targetId: string; toolId: string };
 type LinkResult = { resourceId: string; targetId: string; toolId: string; status: 'created' | 'already-linked' | 'conflict' | 'missing-source'; linkPath: string };
 type Categories = { skill: string[]; rule: string[] };
-type Store = { skills: Skill[]; rules: Rule[]; targets: Target[]; links: LinkRecord[]; categories: Categories; categorySchemaVersion?: number; targetSchemaVersion?: number };
+type Store = { skills: Skill[]; rules: Rule[]; targets: Target[]; links: LinkRecord[]; categories: Categories; notes: Record<string, string>; categorySchemaVersion?: number; targetSchemaVersion?: number };
 type FileEntry = { path: string; name: string; type: 'file' | 'directory'; size?: number };
 
 const toolPresets: Array<Omit<ToolTarget, 'id' | 'enabled'>> = [
@@ -109,6 +109,7 @@ async function readStore(): Promise<Store> {
         return [{ ...legacy, resourceKind: legacy.resourceKind ?? 'skill', resourceId, targetId: mapping.targetId, toolId: mapping.toolId, targetDirectory: legacy.targetDirectory ?? '', createdAt: legacy.createdAt ?? new Date().toISOString() } as LinkRecord];
       }),
       categories,
+      notes: raw.notes ?? {},
       categorySchemaVersion: raw.categorySchemaVersion,
     };
     const copiedRuleCategories = !raw.categorySchemaVersion && !store.rules.length && categories.rule.length === categories.skill.length && categories.rule.every((item) => categories.skill.includes(item));
@@ -120,7 +121,7 @@ async function readStore(): Promise<Store> {
     if (changed) await writeStore(store);
     return store;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { skills: [], rules: [], targets: [], links: [], categories: { skill: [], rule: [] } };
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { skills: [], rules: [], targets: [], links: [], categories: { skill: [], rule: [] }, notes: {} };
     throw error;
   }
 }
@@ -181,7 +182,7 @@ async function removeLinkFiles(links: LinkRecord[]) { for (const link of links) 
 type SessionAgent = 'codex' | 'codebuddy';
 type SessionRole = 'user' | 'assistant' | 'tool';
 type SessionMessage = { role: SessionRole; text: string; at?: string };
-type SessionSummary = { id: string; agent: SessionAgent; workspacePath: string; workspaceName: string; title: string; updatedAt: string; messageCount: number; hasDetail: boolean; source: string };
+type SessionSummary = { id: string; agent: SessionAgent; workspacePath: string; workspaceName: string; title: string; updatedAt: string; messageCount: number; hasDetail: boolean; source: string; workspaceNote?: string };
 type ParsedSession = { cwd: string; sessionId: string; title: string; messageCount: number; updatedAt: string; messages: SessionMessage[] };
 
 const homeDir = () => process.env.HOME || app.getPath('home');
@@ -277,7 +278,8 @@ async function listSessions(): Promise<SessionSummary[]> {
   return found.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')).map((item) => {
     const count = (seen.get(item.id) ?? 0) + 1;
     seen.set(item.id, count);
-    return count === 1 ? item : { ...item, id: `${item.id}#${count}` };
+    const session: SessionSummary = { ...item, workspaceNote: store.notes[item.workspacePath] ?? '' };
+    return count === 1 ? session : { ...session, id: `${item.id}#${count}` };
   });
 }
 
@@ -467,6 +469,8 @@ app.whenReady().then(() => {
   ipcMain.handle('links:remove', async (_event, id: string) => { const store = await readStore(); const link = store.links.find((item) => item.id === id); if (link) { await removeLinkPath(link.linkPath); store.links = store.links.filter((item) => item.id !== id); await writeStore(store); } return store; });
   ipcMain.handle('sessions:list', async () => listSessions());
   ipcMain.handle('sessions:read', async (_event, agent: SessionAgent, source: string) => readSessionMessages(agent, source));
+  // 工作空间备注：按工作空间路径存，留空即删除
+  ipcMain.handle('notes:set', async (_event, workspacePath: string, note: string) => { const store = await readStore(); const trimmed = note.trim(); if (trimmed) store.notes[workspacePath] = trimmed; else delete store.notes[workspacePath]; await writeStore(store); return store; });
   createWindow(); app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

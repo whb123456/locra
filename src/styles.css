@@ -11,8 +11,19 @@
 .session-page .session-rows::-webkit-scrollbar-thumb:hover{background:#bccac3}
 .session-page .tree-head{padding:12px 14px}
 .session-page .tree-group-head{padding:6px 8px}
+/* 卡片头拆成「折叠按钮 + 备注输入框」：输入框不能塞进 button 里，否则点击会连带折叠 */
+.session-group-toggle{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;border:0;background:transparent;padding:0;color:#435149;text-align:left}
+.session-group-toggle>b{width:12px;color:#6c7a73;font-size:16px;line-height:1}
+.session-note{flex:0 1 230px;min-width:0;border:1px dashed transparent;border-radius:6px;background:transparent;color:#33564a;padding:3px 7px;font-size:10px;outline:0;transition:background .12s,border-color .12s,box-shadow .12s}
+.session-note::placeholder{color:#aab5af}
+.session-note:hover{border-color:#cdd9d3;background:#fff}
+.session-note:focus{border-style:solid;border-color:#8ec7b2;background:#fff;box-shadow:0 0 0 2px #dceee7}
+/* 有备注时用便利贴样式：满底色 + 加粗放大，和灰色的工作空间名、路径区分开 */
+.session-note:not(:placeholder-shown){border:1px solid #e9c27c;background:linear-gradient(#fff8e6,#fdefd0);color:#8a5410;font-size:11px;font-weight:700;box-shadow:0 1px 2px rgba(176,124,36,.16)}
+.session-note:not(:placeholder-shown):hover{border-color:#dcae5f;background:#fff3da}
+.session-note:not(:placeholder-shown):focus{border-color:#d3a04a;background:#fffcf2;box-shadow:0 0 0 2px #f7e5c0}
 .session-page .empty-list{grid-column:1/-1}
-.session-group-name{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.session-group-name{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px;font-size:12px;font-weight:750}
 .session-group-name em{overflow:hidden;color:#98a29c;font-size:9px;font-style:normal;font-family:ui-monospace,Menlo,monospace;text-overflow:ellipsis;white-space:nowrap}
 .session-more{align-self:flex-start;margin:1px 0 1px 5px;border:1px dashed #cfe0d8;border-radius:6px;background:#f7fbf9;color:#2b7a62;padding:3px 9px;font-size:9.5px;font-weight:700}
 .session-more:hover{background:#eaf5f0;border-color:#9dcebd}
