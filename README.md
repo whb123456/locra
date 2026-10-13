@@ -78,6 +78,37 @@ npx electron-builder --mac dmg --x64
 
 ---
 
+## 安装（Windows）
+
+**要求**：Windows 10 / 11（64 位）。
+
+1. 从 [Releases](https://github.com/whb123456/locra/releases) 下载 `Locra-0.1.0-x64.exe`
+2. 双击安装：非静默安装，可自选安装目录，默认创建桌面快捷方式
+
+### 首次运行：未签名，会被 SmartScreen 拦下
+
+安装包**没有代码签名**，首次运行会弹「Windows 已保护你的电脑」。
+
+- 图形界面：点「更多信息」→「仍要运行」
+- 命令行（先去掉"来自 Internet"的标记，PowerShell 里执行）：
+
+```powershell
+Unblock-File .\Locra-0.1.0-x64.exe
+```
+
+> 未签名时 SmartScreen 的「未知发布者」提示无法彻底消除，只能手动放行；要彻底解决需要
+> 购买代码签名证书给 exe 签名。
+
+### Windows 上的行为差异
+
+- **同步用 junction 而不是符号链接**：Windows 建符号链接需要管理员权限或开发者模式，
+  所以目录（Skill）走 junction，这个不需要特权；万一连 junction 都建不了（例如目标在不同盘符），
+  会自动退化为**复制**。
+- **退化为复制时不会跟随源目录变化**：改完 Skill 需要重新同步一次。
+- CodeBuddy 的数据目录按平台自动切换为 `%APPDATA%\CodeBuddy CN\...`。
+
+---
+
 ## 本地开发与打包
 
 ```bash
@@ -127,5 +158,5 @@ npm run package:mac  # 构建并打 dmg，产物在 release/
 - **仅 arm64 且未签名/未公证**，需要按上面的方式手动放行
 - **会话列表不提供进入正文**：详情抽屉的实现保留着，但当前列表项不可点击
 - **长会话只读最近一段消息**（`thread_history` 目前只解析最新片段），消息数会比实际少
-- **Windows 未适配**：CodeBuddy 的会话路径硬编码为 macOS 的 `~/Library/Application Support/...`；
-  同步依赖软链接，Windows 上需要管理员权限或开发者模式，否则会失败
+- **Windows 版同样未签名**，首次运行需要在 SmartScreen 里放行
+- **Windows 上可能需要退化为复制**：无法建链时 Skill/Rule 是拷贝而非软链接，源目录之后的变化不会自动同步

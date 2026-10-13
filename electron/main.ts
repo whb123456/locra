@@ -137,17 +137,45 @@ async function listFiles(root: string, current = root, depth = 0): Promise<FileE
   for (const entry of entries.filter((item) => !item.name.startsWith('.')).sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))) { const fullPath = path.join(current, entry.name); const relativePath = path.relative(root, fullPath); if (entry.isDirectory()) result.push({ path: relativePath, name: entry.name, type: 'directory' }, ...(await listFiles(root, fullPath, depth + 1))); else { const stat = await fs.stat(fullPath); result.push({ path: relativePath, name: entry.name, type: 'file', size: stat.size }); } }
   return result;
 }
+// ── 软链接：macOS/Linux 用符号链接；Windows 建符号链接需要管理员权限或开发者模式，
+// 所以目录走 junction（无需特权），文件建链失败时退化为复制，保证同步在各平台都能用 ──
+async function createLink(source: string, linkPath: string, kind: ResourceKind) {
+  const type = kind === 'skill' ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file';
+  try {
+    await fs.symlink(source, linkPath, type);
+  } catch (error) {
+    if (process.platform !== 'win32') throw error;
+    if ((await fs.stat(source)).isDirectory()) await fs.cp(source, linkPath, { recursive: true });
+    else await fs.copyFile(source, linkPath);
+  }
+}
+// 判断 linkPath 是否已经指向 source：软链接比对真实路径，Windows 上复制出来的副本按 store 里的记录认定
+async function isLinkedTo(linkPath: string, source: string, recorded: boolean) {
+  try {
+    const info = await fs.lstat(linkPath);
+    if (info.isSymbolicLink()) return (await fs.realpath(linkPath)) === (await fs.realpath(source));
+    return process.platform === 'win32' && recorded;
+  } catch { return false; }
+}
+async function removeLinkPath(linkPath: string) {
+  try {
+    const info = await fs.lstat(linkPath);
+    if (!info.isSymbolicLink() && info.isDirectory()) await fs.rm(linkPath, { recursive: true, force: true });
+    else await fs.unlink(linkPath);
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+}
 async function reconcileLinks(store: Store) {
   const valid: LinkRecord[] = [];
   for (const target of store.targets) for (const tool of target.tools) for (const kind of ['skill', 'rule'] as ResourceKind[]) for (const resource of resourcesOf(store, kind)) {
     const linkPath = resourceLinkPath(target, tool, kind, resource);
-    try { const stat = await fs.lstat(linkPath); if (!stat.isSymbolicLink() || (await fs.realpath(linkPath)) !== (await fs.realpath(resource.sourcePath))) continue; const existing = store.links.find((link) => link.resourceKind === kind && link.resourceId === resource.id && link.targetId === target.id && link.toolId === tool.id); valid.push(existing ? { ...existing, targetDirectory: resourceDirectory(target, tool, kind), linkPath } : { id: randomUUID(), resourceKind: kind, resourceId: resource.id, targetId: target.id, toolId: tool.id, targetDirectory: resourceDirectory(target, tool, kind), linkPath, createdAt: new Date().toISOString() }); } catch { /* ignore */ }
+    const existing = store.links.find((link) => link.resourceKind === kind && link.resourceId === resource.id && link.targetId === target.id && link.toolId === tool.id);
+    try { if (!(await isLinkedTo(linkPath, resource.sourcePath, Boolean(existing)))) continue; valid.push(existing ? { ...existing, targetDirectory: resourceDirectory(target, tool, kind), linkPath } : { id: randomUUID(), resourceKind: kind, resourceId: resource.id, targetId: target.id, toolId: tool.id, targetDirectory: resourceDirectory(target, tool, kind), linkPath, createdAt: new Date().toISOString() }); } catch { /* ignore */ }
   }
   const changed = valid.length !== store.links.length || valid.some((link) => !store.links.some((old) => old.id === link.id && old.linkPath === link.linkPath)); if (changed) store.links = valid; return changed;
 }
 async function readReconciledStore() { const store = await readStore(); if (await reconcileLinks(store)) await writeStore(store); return store; }
-async function removeResource(store: Store, kind: ResourceKind, resourceId: string) { const links = store.links.filter((link) => link.resourceKind === kind && link.resourceId === resourceId); for (const link of links) try { if ((await fs.lstat(link.linkPath)).isSymbolicLink()) await fs.unlink(link.linkPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } if (kind === 'skill') store.skills = store.skills.filter((item) => item.id !== resourceId); else store.rules = store.rules.filter((item) => item.id !== resourceId); store.links = store.links.filter((link) => link.resourceId !== resourceId || link.resourceKind !== kind); }
-async function removeLinkFiles(links: LinkRecord[]) { for (const link of links) try { if ((await fs.lstat(link.linkPath)).isSymbolicLink()) await fs.unlink(link.linkPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
+async function removeResource(store: Store, kind: ResourceKind, resourceId: string) { const links = store.links.filter((link) => link.resourceKind === kind && link.resourceId === resourceId); for (const link of links) await removeLinkPath(link.linkPath); if (kind === 'skill') store.skills = store.skills.filter((item) => item.id !== resourceId); else store.rules = store.rules.filter((item) => item.id !== resourceId); store.links = store.links.filter((link) => link.resourceId !== resourceId || link.resourceKind !== kind); }
+async function removeLinkFiles(links: LinkRecord[]) { for (const link of links) await removeLinkPath(link.linkPath); }
 
 // ── 会话记录：汇总各 Agent 在工作空间下的对话历史 ──
 type SessionAgent = 'codex' | 'codebuddy';
@@ -157,10 +185,12 @@ type SessionSummary = { id: string; agent: SessionAgent; workspacePath: string; 
 type ParsedSession = { cwd: string; sessionId: string; title: string; messageCount: number; updatedAt: string; messages: SessionMessage[] };
 
 const homeDir = () => process.env.HOME || app.getPath('home');
+// 各平台的用户配置目录：macOS 是 ~/Library/Application Support，Windows 是 %APPDATA%，避免写死单一平台
+const appDataDir = () => app.getPath('appData');
 function agentRoot(agent: SessionAgent) {
   const home = homeDir();
   if (agent === 'codex') return path.join(home, '.codex');
-  return path.join(home, 'Library', 'Application Support', 'CodeBuddy CN', 'User', 'globalStorage', 'tencent-cloud.coding-copilot');
+  return path.join(appDataDir(), 'CodeBuddy CN', 'User', 'globalStorage', 'tencent-cloud.coding-copilot');
 }
 
 async function listNames(dir: string) { try { return await fs.readdir(dir); } catch { return [] as string[]; } }
@@ -313,7 +343,7 @@ async function collectCodex(targets: Target[], found: SessionSummary[]) {
 type CodeBuddySessionRow = { conversationId?: unknown; cwd?: unknown; title?: unknown; customTitle?: unknown; updatedAt?: unknown };
 
 async function readCodeBuddySessions() {
-  const file = path.join(homeDir(), 'Library', 'Application Support', 'CodeBuddy CN', 'codebuddy-sessions.vscdb');
+  const file = path.join(appDataDir(), 'CodeBuddy CN', 'codebuddy-sessions.vscdb');
   const sessions: CodeBuddySessionRow[] = [];
   try {
     const { DatabaseSync } = require('node:sqlite') as { DatabaseSync: new (target: string, options?: { readOnly?: boolean }) => { prepare: (sql: string) => { all: () => unknown[] }; close: () => void } };
@@ -420,8 +450,13 @@ app.whenReady().then(() => {
         const linkPath = resourceLinkPath(target, tool, kind, resource);
         try { await fs.access(resource.sourcePath); } catch { results.push({ resourceId: resource.id, targetId: target.id, toolId: tool.id, status: 'missing-source', linkPath }); continue; }
         await fs.mkdir(directory, { recursive: true });
-        try { const current = await fs.lstat(linkPath); results.push({ resourceId: resource.id, targetId: target.id, toolId: tool.id, status: current.isSymbolicLink() && (await fs.realpath(linkPath)) === (await fs.realpath(resource.sourcePath)) ? 'already-linked' : 'conflict', linkPath }); continue; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-        await fs.symlink(resource.sourcePath, linkPath, kind === 'skill' ? 'dir' : 'file');
+        let occupied = true;
+        try { await fs.lstat(linkPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; occupied = false; }
+        if (occupied) {
+          results.push({ resourceId: resource.id, targetId: target.id, toolId: tool.id, status: (await isLinkedTo(linkPath, resource.sourcePath, store.links.some((item) => item.linkPath === linkPath))) ? 'already-linked' : 'conflict', linkPath });
+          continue;
+        }
+        await createLink(resource.sourcePath, linkPath, kind);
         store.links.push({ id: randomUUID(), resourceKind: kind, resourceId: resource.id, targetId: target.id, toolId: tool.id, targetDirectory: directory, linkPath, createdAt: new Date().toISOString() });
         results.push({ resourceId: resource.id, targetId: target.id, toolId: tool.id, status: 'created', linkPath });
       }
@@ -429,7 +464,7 @@ app.whenReady().then(() => {
     await writeStore(store);
     return { store, results };
   });
-  ipcMain.handle('links:remove', async (_event, id: string) => { const store = await readStore(); const link = store.links.find((item) => item.id === id); if (link) { try { if ((await fs.lstat(link.linkPath)).isSymbolicLink()) await fs.unlink(link.linkPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } store.links = store.links.filter((item) => item.id !== id); await writeStore(store); } return store; });
+  ipcMain.handle('links:remove', async (_event, id: string) => { const store = await readStore(); const link = store.links.find((item) => item.id === id); if (link) { await removeLinkPath(link.linkPath); store.links = store.links.filter((item) => item.id !== id); await writeStore(store); } return store; });
   ipcMain.handle('sessions:list', async () => listSessions());
   ipcMain.handle('sessions:read', async (_event, agent: SessionAgent, source: string) => readSessionMessages(agent, source));
   createWindow(); app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
