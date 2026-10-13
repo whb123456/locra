@@ -33,7 +33,7 @@
 
 **要求**：macOS 13.0 或更新、Apple Silicon（arm64）。
 
-1. 从 [Releases](https://github.com/whb123456/locra/releases) 下载 `Locra-0.1.0-arm64.dmg`
+1. 从 [Releases](https://github.com/whb123456/locra/releases) 下载 `Locra-0.2.0-arm64.dmg`
 2. 双击打开，把 **Locra** 拖进「应用程序」
 
 ### 首次启动：未签名，会被 macOS 拦下
@@ -82,7 +82,7 @@ npx electron-builder --mac dmg --x64
 
 **要求**：Windows 10 / 11（64 位）。
 
-1. 从 [Releases](https://github.com/whb123456/locra/releases) 下载 `Locra-0.1.0-x64.exe`
+1. 从 [Releases](https://github.com/whb123456/locra/releases) 下载 `Locra-0.2.0-x64.exe`
 2. 双击安装：非静默安装，可自选安装目录，默认创建桌面快捷方式
 
 ### 首次运行：未签名，会被 SmartScreen 拦下
@@ -93,7 +93,7 @@ npx electron-builder --mac dmg --x64
 - 命令行（先去掉"来自 Internet"的标记，PowerShell 里执行）：
 
 ```powershell
-Unblock-File .\Locra-0.1.0-x64.exe
+Unblock-File .\Locra-0.2.0-x64.exe
 ```
 
 > 未签名时 SmartScreen 的「未知发布者」提示无法彻底消除，只能手动放行；要彻底解决需要
@@ -129,7 +129,7 @@ npm run release:mac   # 打包 dmg 并推送提交 + tag（Windows 用 release:w
 产物：`release/Locra-<version>-<arch>.dmg`
 
 > `release/`、`dist/`、`dist-electron/` 都在 `.gitignore` 里。**安装包不进 git**，
-> 通过 GitHub Releases 分发（`gh release create v0.1.0 release/Locra-0.1.0-arm64.dmg`）。
+> 通过 GitHub Releases 分发（`gh release create v0.2.0 release/Locra-0.2.0-arm64.dmg`）。
 
 ---
 
