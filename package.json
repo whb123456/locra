@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on tcp:5173 dist-electron/main.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "build": "tsc -b && tsc -p tsconfig.electron.json && vite build",
-    "package:mac": "npm run build && electron-builder --mac dmg --arm64",
-    "package:win": "npm run build && electron-builder --win nsis --x64"
+    "package:mac": "npm run build && electron-builder --mac dmg --arm64 --publish never",
+    "package:win": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "build": {
     "appId": "com.locra.app",
