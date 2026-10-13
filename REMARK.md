@@ -1,48 +1,131 @@
-# Locra 项目说明
+# Locra
 
-## 简介
+把散落在磁盘上的 Skill / Rule 统一收进一个地方管理，再以**软链接**投放到各个 AI 编码 Agent 的目录；
+同时汇总浏览本机各 Agent 的会话记录。
 
-Locra 是一个基于 Electron、React 和 Vite 构建的本地 Skill 管理桌面应用。它用于导入本地 Skill 目录，并通过符号链接同步到 Claude Code、Codex、Cursor、CodeBuddy 或自定义目标目录。
+技术栈：Electron 44 · React · TypeScript · Vite · electron-builder
 
-## 主要能力
+---
 
-- 导入包含 `SKILL.md` 的本地 Skill；
-- 浏览 Skill 描述和文件；
-- 为 Skill 设置分类并进行筛选；
-- 管理预置及自定义同步目标；
-- 将 Skill 以软链接形式添加到目标目录或移除；
-- 自动基于当前用户的 Home 目录生成预置工具的默认目录。
+## 功能
 
-## 技术栈
+### 1. Skill / Rule 管理
+- 导入含 `SKILL.md` 的本地 Skill 目录，以及 `.md` / `.mdc` 的 Rule 文件
+- 浏览描述、文件树与文件内容
+- 分类与筛选（新建分类 / 未分类 / 全部），支持关键字搜索
 
-- Electron
-- React
-- TypeScript
-- Vite
-- electron-builder
+### 2. 同步到 Agent（软链接投放）
+- 预置目标：Claude Code（`.claude`）、Codex（`.codex`）、Cursor（`.cursor`）、CodeBuddy，也可添加自定义目录
+- 单个或批量投放、移除，每个目标实时显示状态（已链接 / 冲突）
+- 用软链接指向源目录，改一处对所有 Agent 立刻生效，不复制文件
 
-## 常用命令
+### 3. 会话浏览
+- 汇总本机 **Codex / Claude Code / CodeBuddy** 的会话记录
+- 按工作空间归集为卡片，两列排布、按名字排序；单卡片最多显示 5 条，更多在卡片内部滚动，不挤动其它卡片
+- 每行显示标题、Agent、时间、消息数；读取不到正文时标注「无本地正文」
+
+### 4. 工作空间
+- 维护预置与自定义工作空间（路径、启用的工具），会话按此归集
+
+---
+
+## 安装（macOS / Apple Silicon）
+
+**要求**：macOS 13.0 或更新、Apple Silicon（arm64）。
+
+1. 从 [Releases](https://github.com/whb123456/locra/releases) 下载 `Locra-0.1.0-arm64.dmg`
+2. 双击打开，把 **Locra** 拖进「应用程序」
+
+### 首次启动：未签名，会被 macOS 拦下
+
+当前包**没有做代码签名，也没有公证**（机器上没有可用的 Developer ID 证书，打包日志会打印
+`skipped macOS application code signing`），所以首次打开会提示「来自身份不明的开发者」，
+个别情况下还会提示「已损坏，无法打开」——两者都是同一个隔离属性造成的。
+
+任选一种方式放行：
+
+**方式一：命令行（推荐，一条命令解决）**
 
 ```bash
-npm run dev
-npm run build
-npm run package:mac
+xattr -dr com.apple.quarantine /Applications/Locra.app
 ```
 
-## 数据存储
+执行后再双击即可正常启动。若应用不在「应用程序」目录，把路径换成实际位置，例如：
 
-应用状态由 Electron 的 `app.getPath('userData')` 目录管理，并以 `locra.json` 保存导入记录、同步目标、链接记录和分类。
+```bash
+xattr -dr com.apple.quarantine ~/Downloads/Locra.app
+```
 
-旧版本数据仍可能位于：
+**方式二：图形界面**
+
+Finder 里按住 `Control` 点击（或右键）Locra → 「打开」→ 在弹窗里再点一次「打开」。
+之后双击就不会再拦。
+
+**方式三：系统设置里放行**
+
+「系统设置 → 隐私与安全性」→ 拉到底部会看到被阻止的提示 → 点「仍要打开」。
+
+> 如果提示「已损坏」且上面方式都不行，说明文件被加上了隔离属性又无法验证：
+> `sudo xattr -cr /Applications/Locra.app` 之后再执行方式一的命令即可。
+
+**Intel Mac**：仓库目前只产出 arm64 包。在自己机器上打 x64 包：
+
+```bash
+npx electron-builder --mac dmg --x64
+```
+
+或把 `package.json` 里 `package:mac` 的 `--arm64` 改成 `--x64`（也能用 `--universal` 出通用包，体积约翻倍）。
+
+---
+
+## 本地开发与打包
+
+```bash
+npm install
+npm run dev          # vite + tsc --watch + electron 一起跑
+npm run build        # 类型检查 + 前端构建
+npm run package:mac  # 构建并打 dmg，产物在 release/
+```
+
+产物：`release/Locra-<version>-<arch>.dmg`
+
+> `release/`、`dist/`、`dist-electron/` 都在 `.gitignore` 里。**安装包不进 git**，
+> 通过 GitHub Releases 分发（`gh release create v0.1.0 release/Locra-0.1.0-arm64.dmg`）。
+
+---
+
+## 数据与目录
+
+**应用状态**：`app.getPath('userData')/locra.json`，保存导入记录、同步目标、链接记录与分类。
+
+旧版本数据可能仍在：
 
 ```text
 ~/Library/Application Support/skill-manager/skill-manager.json
 ```
 
-## 目录说明
+**会话读取来源**：
 
-- `src/`：React 渲染进程界面；
-- `electron/`：Electron 主进程与本地文件、软链接操作；
-- `dist/`：前端构建产物；
-- `dist-electron/`：Electron 主进程构建产物；
-- `release/`：macOS 安装包输出目录。
+| Agent | 位置 |
+|---|---|
+| Codex | `~/.codex/state_N.sqlite` 的 `threads` 表（与 Codex 自身列表一致；`source` 含 `subagent` 的派生线程不计入），读不到时回退扫描 `~/.codex/sessions/**/*.jsonl` |
+| Claude Code | `~/.claude/projects/**` 的 `*.jsonl` |
+| CodeBuddy | `~/Library/Application Support/CodeBuddy CN/codebuddy-sessions.vscdb` |
+
+**代码目录**：
+
+- `src/`：React 渲染进程界面
+- `electron/`：主进程，负责本地文件、软链接、会话解析
+- `dist/`：前端构建产物
+- `dist-electron/`：主进程构建产物
+- `release/`：安装包输出目录
+
+---
+
+## 已知限制
+
+- **仅 arm64 且未签名/未公证**，需要按上面的方式手动放行
+- **会话列表不提供进入正文**：详情抽屉的实现保留着，但当前列表项不可点击
+- **长会话只读最近一段消息**（`thread_history` 目前只解析最新片段），消息数会比实际少
+- **Windows 未适配**：CodeBuddy 的会话路径硬编码为 macOS 的 `~/Library/Application Support/...`；
+  同步依赖软链接，Windows 上需要管理员权限或开发者模式，否则会失败
