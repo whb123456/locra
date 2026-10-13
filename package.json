@@ -9,7 +9,12 @@
     "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on tcp:5173 dist-electron/main.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "build": "tsc -b && tsc -p tsconfig.electron.json && vite build",
     "package:mac": "npm run build && electron-builder --mac dmg --arm64 --publish never",
-    "package:win": "npm run build && electron-builder --win nsis --x64 --publish never"
+    "package:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "bump:patch": "node scripts/bump-version.mjs patch",
+    "bump:minor": "node scripts/bump-version.mjs minor",
+    "bump:major": "node scripts/bump-version.mjs major",
+    "release:mac": "npm run package:mac && git push --follow-tags",
+    "release:win": "npm run package:win && git push --follow-tags"
   },
   "build": {
     "appId": "com.locra.app",

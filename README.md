@@ -118,6 +118,14 @@ npm run build        # 类型检查 + 前端构建
 npm run package:mac  # 构建并打 dmg，产物在 release/
 ```
 
+**发版流程**：版本号是安装包文件名的一部分，所以别直接改 `package.json` —— 升版本请走脚本，
+它会同步 `package.json`、`package-lock.json` 和本文档里写死的产物文件名，然后提交并打 tag：
+
+```bash
+npm run bump:minor    # 或 bump:patch / bump:major
+npm run release:mac   # 打包 dmg 并推送提交 + tag（Windows 用 release:win）
+```
+
 产物：`release/Locra-<version>-<arch>.dmg`
 
 > `release/`、`dist/`、`dist-electron/` 都在 `.gitignore` 里。**安装包不进 git**，
