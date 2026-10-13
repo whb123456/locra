@@ -7,9 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 上传到哪个 Release 标签
-        required: false
-        default: v0.1.0
+        description: 上传到哪个 Release 标签（例如 v0.2.0）
+        required: true
 
 permissions:
   contents: write
